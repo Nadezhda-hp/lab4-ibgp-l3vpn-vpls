@@ -1,0 +1,115 @@
+# ============================================================
+# ContainerLab топология для Лабораторной работы №4
+# "Эмуляция распределённой корпоративной сети связи,
+#  настройка iBGP, организация L3VPN, VPLS"
+# ============================================================
+#
+# Компания "RogalKopita Games" выпустила игру "Allmoney Impact".
+# Нужно организовать собственную AS, настроить iBGP с Route
+# Reflector кластером, а также L3VPN и VPLS для отдела DEVOPS.
+#
+# Схема IP/MPLS сети с BGPv4:
+#
+#  PC2 ---- R01.NY ---- R01.LND ---- R01.HKI ---- R01.SPB ---- PC1
+# (DEVOPS)                 |  \        / |                    (DEVOPS)
+#                          |   \      /  |
+#                          |  R01.LBN    |
+#                          |      |      |
+#                          |  R01.SVL    |
+#                          |      |
+#                          |     PC3
+#                          |   (DEVOPS)
+#
+# Route Reflectors: R01.LND и R01.HKI
+# PE-роутеры (с VRF): R01.NY, R01.SPB, R01.SVL
+# P-роутеры (транзит): R01.LND, R01.HKI, R01.LBN
+# AS: 65530
+# ============================================================
+
+name: lab4
+
+topology:
+  nodes:
+    # === РОУТЕРЫ ===
+
+    # PE-роутер Нью-Йорк (подключён PC2 в VRF_DEVOPS)
+    R01.NY:
+      kind: vr-ros
+      image: vrnetlab/vr-ros:6.47.9
+      startup-config: R01_NY.rsc
+
+    # Route Reflector №1 — Лондон
+    R01.LND:
+      kind: vr-ros
+      image: vrnetlab/vr-ros:6.47.9
+      startup-config: R01_LND.rsc
+
+    # P-роутер Любляна (транзит + подключение к SVL)
+    R01.LBN:
+      kind: vr-ros
+      image: vrnetlab/vr-ros:6.47.9
+      startup-config: R01_LBN.rsc
+
+    # Route Reflector №2 — Хельсинки
+    R01.HKI:
+      kind: vr-ros
+      image: vrnetlab/vr-ros:6.47.9
+      startup-config: R01_HKI.rsc
+
+    # PE-роутер Санкт-Петербург (подключён PC1 в VRF_DEVOPS)
+    R01.SPB:
+      kind: vr-ros
+      image: vrnetlab/vr-ros:6.47.9
+      startup-config: R01_SPB.rsc
+
+    # PE-роутер Сан-Вали (подключён PC3 в VRF_DEVOPS)
+    R01.SVL:
+      kind: vr-ros
+      image: vrnetlab/vr-ros:6.47.9
+      startup-config: R01_SVL.rsc
+
+    # === КЛИЕНТСКИЕ ПК (отдел DEVOPS) ===
+
+    # PC1 — Санкт-Петербург (VRF_DEVOPS)
+    PC1:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip link set eth1 up
+        - ip addr add 192.168.20.2/24 dev eth1
+        - ip route add default via 192.168.20.1
+
+    # PC2 — Нью-Йорк (VRF_DEVOPS)
+    PC2:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip link set eth1 up
+        - ip addr add 192.168.10.2/24 dev eth1
+        - ip route add default via 192.168.10.1
+
+    # PC3 — Сан-Вали (VRF_DEVOPS)
+    PC3:
+      kind: linux
+      image: alpine:latest
+      exec:
+        - ip link set eth1 up
+        - ip addr add 192.168.30.2/24 dev eth1
+        - ip route add default via 192.168.30.1
+
+  # === СОЕДИНЕНИЯ ===
+  links:
+    # Магистральные каналы (основная цепочка)
+    - endpoints: ["R01.NY:eth1", "R01.LND:eth1"]
+    - endpoints: ["R01.LND:eth2", "R01.HKI:eth1"]
+    - endpoints: ["R01.HKI:eth2", "R01.SPB:eth1"]
+
+    # Дополнительные магистральные каналы
+    - endpoints: ["R01.LND:eth3", "R01.LBN:eth1"]
+    - endpoints: ["R01.HKI:eth3", "R01.LBN:eth2"]
+    - endpoints: ["R01.LBN:eth3", "R01.SVL:eth1"]
+
+    # Подключение клиентских ПК к PE-роутерам
+    - endpoints: ["R01.NY:eth2", "PC2:eth1"]
+    - endpoints: ["R01.SPB:eth2", "PC1:eth1"]
+    - endpoints: ["R01.SVL:eth2", "PC3:eth1"]
